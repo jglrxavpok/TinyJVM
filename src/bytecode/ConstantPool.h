@@ -92,7 +92,7 @@ struct CONSTANT_NameAndType_info {
 struct CONSTANT_Utf8_info {
     u1 tag;
     u2 length;
-    u1 bytes[];
+    u1* bytes;
 } typedef CONSTANT_Utf8_info;
 
 struct CONSTANT_MethodHandle_info {

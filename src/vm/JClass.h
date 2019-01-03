@@ -8,6 +8,7 @@
 
 #include <tinyutf8/tinyutf8.h>
 #include <map>
+#include "bytecode/ConstantPool.h"
 #include "JField.h"
 #include "JMethod.h"
 

@@ -5,11 +5,12 @@
 #include "Arduino.h"
 #include <bytecode/ClassFile.h>
 #include <vm/TinyJVM.h>
+#include <std/java/lang/System.h>
+#include <std/java/lang/Object.h>
 #include "SD.h"
 #include "Gameboy.class.h"
 #include "ByteStream.h"
 #include "Main.class.h"
-
 
 static TinyJVM* jvm = new TinyJVM();
 
@@ -56,6 +57,8 @@ void setup() {
     Serial.println("Class file read!");
 
     ClassFile* classFile = ClassFile::read(stream);
+    jvm->loadClass(System);
+    jvm->loadClass(Object);
     jvm->loadClassFile(*classFile);
     Serial.println("Java class loaded!");
     jvm->startFrom(u8"Main", u8"main");

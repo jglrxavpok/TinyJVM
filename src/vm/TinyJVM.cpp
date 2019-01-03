@@ -3,12 +3,12 @@
 //
 
 #include "Arduino.h"
+#include "sdmalloc.h"
 #include <bytecode/ClassFile.h>
 #include <vector>
 #include "TinyJVM.h"
 #include "CodeAttribute.h"
 #include "bytecode/opcodes.h"
-#include "sdmalloc.h"
 
 TinyJVM::TinyJVM() {
     currentLocation.programCounter = 0;
@@ -27,7 +27,6 @@ void TinyJVM::step() {
 
     switch(instruction) {
         case GETSTATIC: {
-            Serial.println("getstatic");
             size_t index = code[pc++] << 8 | code[pc++];
             auto* fieldInfo = (CONSTANT_Fieldref_info*)constants[index-1];
             auto* nameAndTypeInfo = (CONSTANT_NameAndType_info*)constants[fieldInfo->name_and_type_index-1];
@@ -36,7 +35,7 @@ void TinyJVM::step() {
             utf8_string* fieldName = ConstantPool::getUTF8(constants, nameAndTypeInfo->name_index);
             JClass* clazz = loadedClasses[*owningClassName];
             if(!owningClassName->compare("java/lang/System") && !fieldName->compare("out")) {
-                auto* stdoutValue = (Value*)sdmalloc(sizeof(Value));
+                auto* stdoutValue = freeValueStructs.get();
                 stdoutValue->data = nullptr;
                 stdoutValue->type = parseBasicDescriptor("Ljava/io/PrintStream");
                 executionStack.push(*stdoutValue);
@@ -51,9 +50,7 @@ void TinyJVM::step() {
             switch(constant->tag) {
                 case CONSTANT_String: {
                     auto* strInfo = (CONSTANT_String_info*)constant;
-                    auto* strValue = (Value*)sdmalloc(sizeof(Value));
-                    strValue->type = parseBasicDescriptor("Ljava/lang/String;");
-                    strValue->data = ConstantPool::getUTF8(constants, strInfo->string_index);
+                    auto* strValue = stringValue(ConstantPool::getUTF8(constants, strInfo->string_index));
                     executionStack.push(*strValue);
                 }
                     break;
@@ -75,17 +72,22 @@ void TinyJVM::step() {
             Serial.printf("INVOKEVIRTUAL %s %s\n", owningClassName->data(), methodName->data());
 
             if(!methodName->compare(u8"println") && !owningClassName->compare(u8"java/io/PrintStream")) {
-                const Value stringValue = executionStack.top();
+                Value stringValue = executionStack.top();
+                freeValueStructs.store(&stringValue);
                 executionStack.pop();
-                const Value printStream = executionStack.top();
+                Value printStream = executionStack.top();
                 executionStack.pop();
                 auto* str = (utf8_string*)stringValue.data;
                 Serial.printf("[OUTPUT] %s\n", str->data());
+                freeValueStructs.store(&printStream);
             }
         }
             break;
 
         case RETURN: {
+            freeLocationStructs.store(&currentLocation);
+            locals = localStack.top();
+            localStack.pop();
             currentLocation = callstack.top();
             callstack.pop();
             Serial.println("RETURN");
@@ -96,6 +98,31 @@ void TinyJVM::step() {
             Serial.printf("Unsupported instruction: %x %i\n", instruction, pc);
             break;
     }
+}
+
+Value* TinyJVM::floatValue(uint32_t bytes) {
+    auto* value = freeValueStructs.get();
+    value->type = parseBasicDescriptor(u8"F");
+    value->data = (void*)bytes;
+    return value;
+}
+
+Value* TinyJVM::intValue(uint32_t bytes) {
+    auto* value = freeValueStructs.get();
+    value->type = parseBasicDescriptor(u8"I");
+    value->data = (void*)bytes;
+    return value;
+}
+
+Value* TinyJVM::stringValue(utf8_string *str) {
+    auto* strValue = freeValueStructs.get();
+    strValue->type = parseBasicDescriptor(u8"Ljava/lang/String;");
+    strValue->data = str;
+    return strValue;
+}
+
+void TinyJVM::loadClass(JClass* clazz) {
+    loadedClasses.insert({clazz->name, clazz});
 }
 
 void TinyJVM::loadClassFile(ClassFile &file) {
@@ -175,7 +202,7 @@ void TinyJVM::buildFieldMap(ClassFile& file, FieldMap& map) {
 }
 
 const BasicDescriptor* TinyJVM::parseBasicDescriptor(const utf8_string& str, size_t* cursor) {
-    Serial.printf("parseBasicDescriptor %s %p\n", str.data(), cursor);
+    //Serial.printf("parseBasicDescriptor %s %p\n", str.data(), cursor);
     if(basicDescriptors[str] != nullptr) {
         const BasicDescriptor* desc = basicDescriptors[str];
         if(cursor)
@@ -189,10 +216,10 @@ const BasicDescriptor* TinyJVM::parseBasicDescriptor(const utf8_string& str, siz
 
 const MethodDescriptor* TinyJVM::parseMethodDescriptor(const utf8_string& str) {
     if(methodDescriptors[str] != nullptr) {
-        Serial.printf("Cache hit for %s\n", str.data());
+        //Serial.printf("Cache hit for %s\n", str.data());
         return methodDescriptors[str];
     }
-    Serial.printf("Cache miss for %s\n", str.data());
+    //Serial.printf("Cache miss for %s\n", str.data());
     if(str[0] != '(') {
         // TODO: log
         Serial.printf("Invalid method descriptor: %s\n", str.data());
@@ -202,7 +229,7 @@ const MethodDescriptor* TinyJVM::parseMethodDescriptor(const utf8_string& str) {
     std::vector<const BasicDescriptor*> args;
     const BasicDescriptor* returnType = nullptr;
     do {
-        Serial.printf("index = %i (remaining = %s)\n", index, str.substr(index).data());
+       // Serial.printf("index = %i (remaining = %s)\n", index, str.substr(index).data());
         if(str[index] == 'L') {
             size_t semicolonIndex = str.find(";", index);
             utf8_string name = str.substr(index, semicolonIndex-index+1);
@@ -231,7 +258,7 @@ const BasicDescriptor *TinyJVM::actualParseBasicDescriptor(const utf8_string& st
         start = *cursor;
     else
         cursor = &start;
-    Serial.printf(">> At start(%i) %c\n", start, str[start]);
+   // Serial.printf(">> At start(%i) %c\n", start, str[start]);
     auto* descriptor = (BasicDescriptor*)sdmalloc(sizeof(BasicDescriptor));
     descriptor->isNative = str[start] != 'L' && str[start] != '[';
     descriptor->isArray = str[start] == '[';
@@ -284,8 +311,8 @@ const BasicDescriptor *TinyJVM::actualParseBasicDescriptor(const utf8_string& st
         if(cursor) {
             *cursor = *cursor+1;
         }
-        Serial.printf("preread array %i %s\n", str.size(), str.c_str());
-        Serial.printf("read array %p\n", &str);
+       // Serial.printf("preread array %i %s\n", str.size(), str.c_str());
+       // Serial.printf("read array %p\n", &str);
         descriptor->elementType = parseBasicDescriptor(str, cursor);
     } else {
         size_t semicolonIndex = str.find(";", 1);
@@ -296,7 +323,7 @@ const BasicDescriptor *TinyJVM::actualParseBasicDescriptor(const utf8_string& st
         }
     }
     descriptor->descLength = *cursor- start;
-    Serial.printf("Read basic descriptor %s\n", str.data());
+  //  Serial.printf("Read basic descriptor %s\n", str.data());
     return descriptor;
 }
 

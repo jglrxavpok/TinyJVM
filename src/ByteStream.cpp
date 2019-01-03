@@ -6,7 +6,6 @@
 #include "Arduino.h"
 
 ByteStream::ByteStream(uint8_t *array, size_t size): array(array), size(size), cursor(0) {
-    Serial.println("hello");
 }
 
 size_t ByteStream::write(uint8_t b) {

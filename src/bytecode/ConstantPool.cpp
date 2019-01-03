@@ -17,19 +17,16 @@ utf8_string* ConstantPool::getUTF8(CPInfo** constants, uint16_t index) {
         // TODO: log
         return nullptr;
     }
-    Serial.println("getUTF8");
     if(utf8Cache.find((uint64_t)info) != utf8Cache.end()) {
-        Serial.println("cache hit in getUTF8");
+        //Serial.println("cache hit in getUTF8");
         return utf8Cache.find((uint64_t)info)->second;
     }
-    Serial.println("cache miss in getUTF8");
+    //Serial.println("cache miss in getUTF8");
     auto * utf8_info = (CONSTANT_Utf8_info*)info;
 
     uint16_t length = utf8_info->length;
     const uint8_t* bytes = utf8_info->bytes;
-    Serial.println("pre allocation of new utf8");
     auto* result = new utf8_string((char*)bytes, length);
-    Serial.println("allocated new utf8");
     utf8Cache[(uint64_t)info] = result;
     return result;
 }
@@ -109,8 +106,10 @@ void ConstantPool::readEntry(CPInfo** info, Stream* s) {
         case CONSTANT_Utf8: // UTF8_info requires a variable amount of memory to hold the bytes
             {
                 u2 length = ReadU2(s);
-                auto* utf8_info = (CONSTANT_Utf8_info *)(sdmalloc(sizeof(u1)/*tag*/ + sizeof(u2)/*length*/ + sizeof(u1) * length));
+                auto* utf8_info = (CONSTANT_Utf8_info *)(sdmalloc(sizeof(u1)/*tag*/ + sizeof(u2)/*length*/));
+                auto* buffer = (u1*)sdmalloc(sizeof(u1) * length);
                 utf8_info->length = length;
+                utf8_info->bytes = buffer;
                 s->readBytes(utf8_info->bytes, length);
                 *info = (CPInfo*)utf8_info;
             }

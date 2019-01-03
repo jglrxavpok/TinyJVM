@@ -1,8 +1,9 @@
 TinyJVM
 =======
-This project aims at providing a JVM that can be run on microcontrollers (tested with a Teensy 3.6)
+This project aims at providing a JVM that can be run on microcontrollers (tested with a Teensy 3.6).
+This is useful to run code from a SD card, for instance.
 
-In contrary to PC JVMs, this one does not provide any security features (such as bytecode validation before running, etc.) to save time and memory
+In contrary to PC JVMs, this one does not provide any security features (such as bytecode validation before running, etc.) to save time and memory.
 
 
 Usage

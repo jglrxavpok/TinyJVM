@@ -17,6 +17,7 @@ public:
     const MethodDescriptor& descriptor;
     CodeAttribute* codeAttribute;
     const uint16_t accessFlags;
+    void* callback = nullptr;
 
     static void *operator new(size_t size) {
         return sdmalloc(size);
